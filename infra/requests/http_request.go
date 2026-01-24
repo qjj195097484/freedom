@@ -8,7 +8,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"mime/multipart"
 	"net/http"
 	"net/url"
@@ -324,12 +323,11 @@ func (req *httpRequest) readBody() {
 			return
 		}
 		defer reader.Close()
-		req.responeBody, req.Response.Error = ioutil.ReadAll(reader)
+		req.responeBody, req.Response.Error = io.ReadAll(reader)
 		return
 	}
 
-	req.responeBody, req.Response.Error = ioutil.ReadAll(req.Response.stdResponse.Body)
-	return
+	req.responeBody, req.Response.Error = io.ReadAll(req.Response.stdResponse.Body)
 }
 
 func (req *httpRequest) fillingRespone() {
@@ -476,4 +474,13 @@ func (req *httpRequest) SetClientFromMiddleware(client Client) {
 // IsH2C .
 func (req *httpRequest) IsH2C() bool {
 	return req.h2c
+}
+
+// Do Execute the HTTP request directly using the default client.
+// This follows the default flow without middleware control.
+func (req *httpRequest) Do() (*http.Response, error) {
+	if req.Response.Error = req.prepare(); req.Response.Error != nil {
+		return nil, req.Response.Error
+	}
+	return req.Client.Do(req.StdRequest)
 }

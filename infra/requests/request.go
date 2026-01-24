@@ -75,6 +75,9 @@ type Request interface {
 	EnableTrace() Request
 	// Set up client.
 	SetClient(client Client) Request
+	// Do Execute the HTTP request directly using the default client.
+	// This follows the default flow without middleware control.
+	Do() (*http.Response, error)
 }
 
 // NewHTTPRequest Create an HTTP request object.

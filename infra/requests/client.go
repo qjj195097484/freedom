@@ -11,8 +11,8 @@ import (
 )
 
 func init() {
-	InitH2CClient(10 * time.Second)
-	InitHTTPClient(10 * time.Second)
+	InitH2CClient(60 * time.Second)
+	InitHTTPClient(60 * time.Second)
 }
 
 var (
@@ -20,9 +20,7 @@ var (
 	defaultH2CClient Client
 	// defaultHTTPClient .
 	defaultHTTPClient Client
-
-	h2cclientGroup  singleflight.Group
-	httpclientGroup singleflight.Group
+	httpclientGroup   singleflight.Group
 )
 
 // SetHTTPClient Set up client.
@@ -54,7 +52,7 @@ func (client *ClientImpl) Do(req *http.Request) (*http.Response, error) {
 // The parameter rwTimeout is io timeout.
 // The parameter connectTimeout is connect timeout.
 func InitHTTPClient(rwTimeout time.Duration, connectTimeout ...time.Duration) {
-	sec := 2 * time.Second
+	sec := 5 * time.Second
 	if len(connectTimeout) > 0 {
 		sec = connectTimeout[0]
 	}
@@ -65,7 +63,7 @@ func InitHTTPClient(rwTimeout time.Duration, connectTimeout ...time.Duration) {
 // The parameter rwTimeout is io timeout.
 // The parameter connectTimeout is connect timeout.
 func InitH2CClient(rwTimeout time.Duration, connectTimeout ...time.Duration) {
-	sec := 2 * time.Second
+	sec := 5 * time.Second
 	if len(connectTimeout) > 0 {
 		sec = connectTimeout[0]
 	}
