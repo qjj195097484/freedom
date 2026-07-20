@@ -9,8 +9,10 @@ import (
 	"strings"
 	"unicode"
 
-	//github.com/go-sql-driver/mysql"
 	_ "github.com/go-sql-driver/mysql"
+	"gorm.io/driver/mysql"
+	"gorm.io/driver/postgres"
+	"gorm.io/gorm"
 )
 
 // map for converting mysql type to golang types
@@ -53,6 +55,66 @@ var typeForMysqlToGo = map[string]string{
 	"json":               "datatypes.JSON",
 }
 
+// map for converting postgres type to golang types
+var typeForPostgresToGo = map[string]string{
+	"smallint":                    "int",
+	"integer":                     "int",
+	"bigint":                      "int",
+	"smallserial":                 "int",
+	"serial":                      "int",
+	"bigserial":                   "int",
+	"decimal":                     "float64",
+	"numeric":                     "float64",
+	"real":                        "float64",
+	"double precision":            "float64",
+	"money":                       "float64",
+	"boolean":                     "bool",
+	"character varying":           "string",
+	"varchar":                     "string",
+	"character":                   "string",
+	"char":                        "string",
+	"text":                        "string",
+	"citext":                      "string",
+	"uuid":                        "string",
+	"inet":                        "string",
+	"cidr":                        "string",
+	"macaddr":                     "string",
+	"macaddr8":                    "string",
+	"interval":                    "string",
+	"bytea":                       "[]byte",
+	"date":                        "time.Time",
+	"timestamp":                   "time.Time",
+	"timestamp without time zone": "time.Time",
+	"timestamp with time zone":    "time.Time",
+	"timestamptz":                 "time.Time",
+	"time":                        "string",
+	"time without time zone":      "string",
+	"time with time zone":         "string",
+	"json":                        "datatypes.JSON",
+	"jsonb":                       "datatypes.JSON",
+	"xml":                         "string",
+	"point":                       "string",
+	"line":                        "string",
+	"polygon":                     "string",
+	"circle":                      "string",
+	"tsvector":                    "string",
+	"tsquery":                     "string",
+	"ARRAY":                       "string",
+	"USER-DEFINED":                "string",
+}
+
+// goType returns the Go type for the given database column type, falling back to "string" for unknown types.
+func (t *Generate) goType(dbType string) string {
+	typeMap := typeForMysqlToGo
+	if t.driver == "postgres" || t.driver == "pg" {
+		typeMap = typeForPostgresToGo
+	}
+	if goType, ok := typeMap[dbType]; ok {
+		return goType
+	}
+	return "string"
+}
+
 // Generate .
 type Generate struct {
 	dsn            string
@@ -60,6 +122,7 @@ type Generate struct {
 	table          string
 	prefix         string
 	realNameMethod string
+	driver         string // mysql or postgres
 }
 
 // NewGenerate .
@@ -76,6 +139,12 @@ func (t *Generate) Dsn(d string) *Generate {
 // SetPrefix .
 func (t *Generate) SetPrefix(prefix string) *Generate {
 	t.prefix = prefix
+	return t
+}
+
+// SetDriver .
+func (t *Generate) SetDriver(driver string) *Generate {
+	t.driver = driver
 	return t
 }
 
@@ -109,12 +178,18 @@ type ObjectContent struct {
 
 // RunDsn .
 func (t *Generate) RunDsn() (result []ObjectContent, e error) {
-	if e = t.dialMysql(); e != nil {
+	if e = t.dial(); e != nil {
 		return
 	}
 
 	// 获取表和字段的schema
-	tableColumns, err := t.getColumns()
+	var tableColumns map[string][]column
+	var err error
+	if t.driver == "postgres" || t.driver == "pg" {
+		tableColumns, err = t.getColumnsPostgres()
+	} else {
+		tableColumns, err = t.getColumns()
+	}
 	if err != nil {
 		e = err
 		return
@@ -241,12 +316,23 @@ func (t *Generate) schema(tableColumns map[string][]column) (result []ObjectCont
 	return
 }
 
-func (t *Generate) dialMysql() (e error) {
+func (t *Generate) dial() (e error) {
 	if t.db == nil {
 		if t.dsn == "" {
 			return errors.New("dsn数据库配置缺失")
 		}
-		t.db, e = sql.Open("mysql", t.dsn)
+		var dialector gorm.Dialector
+		switch t.driver {
+		case "postgres", "pg":
+			dialector = postgres.Open(t.dsn)
+		default:
+			dialector = mysql.Open(t.dsn)
+		}
+		gdb, err := gorm.Open(dialector, &gorm.Config{})
+		if err != nil {
+			return err
+		}
+		t.db, e = gdb.DB()
 	}
 	return
 }
@@ -260,7 +346,7 @@ type column struct {
 	Primary       string
 }
 
-// Function for fetching schema definition of passed table
+// Function for fetching schema definition of passed table (MySQL)
 func (t *Generate) getColumns(table ...string) (tableColumns map[string][]column, err error) {
 	tableColumns = make(map[string][]column)
 	// sql
@@ -268,13 +354,15 @@ func (t *Generate) getColumns(table ...string) (tableColumns map[string][]column
 		FROM information_schema.COLUMNS 
 		WHERE table_schema = DATABASE()`
 	// 是否指定了具体的table
+	var args []interface{}
 	if t.table != "" {
-		sqlStr += fmt.Sprintf(" AND TABLE_NAME = '%s'", t.prefix+t.table)
+		sqlStr += " AND TABLE_NAME = ?"
+		args = append(args, t.prefix+t.table)
 	}
 	// sql排序
 	sqlStr += " order by TABLE_NAME asc, ORDINAL_POSITION asc"
 
-	rows, err := t.db.Query(sqlStr)
+	rows, err := t.db.Query(sqlStr, args...)
 	if err != nil {
 		fmt.Println("Error reading table information: ", err.Error())
 		return
@@ -295,7 +383,95 @@ func (t *Generate) getColumns(table ...string) (tableColumns map[string][]column
 		//col.Json = strings.ToLower(col.ColumnName)
 		col.Tag = col.ColumnName
 		col.ColumnName = t.camelCase(col.ColumnName)
-		col.Type = typeForMysqlToGo[col.Type]
+		col.Type = t.goType(col.Type)
+		if _, ok := tableColumns[col.TableName]; !ok {
+			tableColumns[col.TableName] = []column{}
+		}
+		tableColumns[col.TableName] = append(tableColumns[col.TableName], col)
+	}
+	return
+}
+
+// Function for fetching schema definition of passed table (PostgreSQL)
+func (t *Generate) getColumnsPostgres() (tableColumns map[string][]column, err error) {
+	tableColumns = make(map[string][]column)
+
+	// 查询主键信息
+	primaryKeys := make(map[string]map[string]bool) // tableName -> set of primary key columns
+	pkSQL := `SELECT
+		tc.table_name,
+		kcu.column_name
+	FROM information_schema.table_constraints tc
+	JOIN information_schema.key_column_usage kcu
+		ON tc.constraint_name = kcu.constraint_name
+		AND tc.table_schema = kcu.table_schema
+	WHERE tc.constraint_type = 'PRIMARY KEY'
+		AND tc.table_schema = current_schema()`
+	var pkArgs []interface{}
+	if t.table != "" {
+		pkSQL += " AND tc.table_name = $1"
+		pkArgs = append(pkArgs, t.prefix+t.table)
+	}
+
+	pkRows, err := t.db.Query(pkSQL, pkArgs...)
+	if err != nil {
+		fmt.Println("Error reading primary key information: ", err.Error())
+		return
+	}
+	defer pkRows.Close()
+	for pkRows.Next() {
+		var tblName, colName string
+		if err = pkRows.Scan(&tblName, &colName); err != nil {
+			return
+		}
+		if primaryKeys[tblName] == nil {
+			primaryKeys[tblName] = make(map[string]bool)
+		}
+		primaryKeys[tblName][colName] = true
+	}
+
+	// 查询列信息
+	var sqlStr = `SELECT
+		c.column_name,
+		c.data_type,
+		c.table_name,
+		COALESCE(pgd.description, '') AS column_comment
+	FROM information_schema.columns c
+	LEFT JOIN pg_catalog.pg_statio_all_tables st
+		ON st.schemaname = c.table_schema AND st.relname = c.table_name
+	LEFT JOIN pg_catalog.pg_description pgd
+		ON pgd.objoid = st.relid AND pgd.objsubid = c.ordinal_position
+	WHERE c.table_schema = current_schema()`
+	var args []interface{}
+	if t.table != "" {
+		sqlStr += " AND c.table_name = $1"
+		args = append(args, t.prefix+t.table)
+	}
+	sqlStr += " ORDER BY c.table_name ASC, c.ordinal_position ASC"
+
+	rows, err := t.db.Query(sqlStr, args...)
+	if err != nil {
+		fmt.Println("Error reading table information: ", err.Error())
+		return
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		col := column{}
+		err = rows.Scan(&col.ColumnName, &col.Type, &col.TableName, &col.ColumnComment)
+		if err != nil {
+			fmt.Println(err.Error())
+			return
+		}
+
+		// 判断是否为主键
+		if primaryKeys[col.TableName] != nil && primaryKeys[col.TableName][col.ColumnName] {
+			col.Primary = "PRI"
+		}
+
+		col.Tag = col.ColumnName
+		col.ColumnName = t.camelCase(col.ColumnName)
+		col.Type = t.goType(col.Type)
 		if _, ok := tableColumns[col.TableName]; !ok {
 			tableColumns[col.TableName] = []column{}
 		}
@@ -317,9 +493,7 @@ func (t *Generate) getJSONColumns(jsonData []interface{}) (tableColumns map[stri
 				continue
 			}
 			columnType := strings.Split(key, ":")[1]
-			if newType, ok := typeForMysqlToGo[columnType]; ok {
-				columnType = newType
-			}
+			columnType = t.goType(columnType)
 
 			for _, columnInterface := range value.([]interface{}) {
 				columnName := columnInterface.(string)

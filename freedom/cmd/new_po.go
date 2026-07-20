@@ -29,6 +29,8 @@ var (
 	OutFunc = "./adapter/repository"
 	//Prefix .
 	Prefix = ""
+	//Driver .
+	Driver = "mysql"
 	//NewCRUDCmd .
 	NewCRUDCmd = &cobra.Command{
 		Use:   "new-po",
@@ -140,6 +142,7 @@ func GetStruct() (list []crud.ObjectContent, e error) {
 		})
 	}()
 	cmd := crud.NewGenerate()
+	cmd.SetDriver(Driver)
 	if Prefix != "" {
 		cmd.SetPrefix(Prefix)
 	}
@@ -148,8 +151,8 @@ func GetStruct() (list []crud.ObjectContent, e error) {
 		return
 	}
 	if JSONFile != "" {
-		list, e = cmd.Dsn(Dsn).RunDsn()
-		return cmd.RunJSON(JSONFile)
+		list, e = cmd.RunJSON(JSONFile)
+		return
 	}
 
 	e = errors.New("Wrong instruction")
@@ -157,9 +160,10 @@ func GetStruct() (list []crud.ObjectContent, e error) {
 }
 
 func init() {
-	NewCRUDCmd.Flags().StringVarP(&Dsn, "dsn", "d", "", `The address of the data source "root:123123@tcp(127.0.0.1:3306)/xxx?charset=utf8"`)
+	NewCRUDCmd.Flags().StringVarP(&Dsn, "dsn", "d", "", `The address of the data source "root:123123@tcp(127.0.0.1:3306)/xxx?charset=utf8" or "host=localhost port=5432 user=postgres password=xxx dbname=mydb sslmode=disable"`)
 	NewCRUDCmd.Flags().StringVarP(&JSONFile, "json", "j", "", `Table structure of JSON, "./domain/po/schema.json"`)
 	NewCRUDCmd.Flags().StringVarP(&Prefix, "prefix", "p", "", `Ignore prefix`)
+	NewCRUDCmd.Flags().StringVar(&Driver, "driver", "mysql", `Database driver: mysql or postgres`)
 
 	AddCommand(NewCRUDCmd)
 }

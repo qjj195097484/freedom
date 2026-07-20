@@ -9,6 +9,7 @@ func init() {
 func tomlConf() string {
 	return `[db]
 addr = "root:123123@tcp(127.0.0.1:3306)/xxxx?charset=utf8mb4&parseTime=True&loc=Local&timeout=5s"
+# postgres: addr = "host=127.0.0.1 port=5432 user=root password=123456 dbname=xxxx sslmode=disable"
 max_open_conns = 16
 max_idle_conns = 8
 conn_max_life_time = 300
@@ -50,6 +51,7 @@ shutdown_second = 3
 func yamlConf() string {
 	return `db:
     addr: root:123123@tcp(127.0.0.1:3306)/xxxx?charset=utf8mb4&parseTime=True&loc=Local&timeout=5s
+    # postgres: addr: host=127.0.0.1 port=5432 user=root password=123456 dbname=xxxx sslmode=disable
     max_open_conns: 16
     max_idle_conns: 8
     conn_max_life_time: 300
@@ -83,6 +85,7 @@ func mainTemplate() string {
 		"context"
 		"time"
 		"gorm.io/driver/mysql"
+		//"gorm.io/driver/postgres"
 		"github.com/8treenet/freedom"
 		_ "{{.PackagePath}}/adapter/repository" //Implicit initialization repository
 		_ "{{.PackagePath}}/adapter/controller" //Implicit initialization controller
@@ -133,6 +136,7 @@ func mainTemplate() string {
 		app.InstallDB(func() interface{} {
 			conf := config.Get().DB
 			db, err := gorm.Open(mysql.Open(conf.Addr), &gorm.Config{})
+			//db, err := gorm.Open(postgres.Open(conf.Addr), &gorm.Config{})
 			if err != nil {
 				freedom.Logger().Fatal(err.Error())
 			}

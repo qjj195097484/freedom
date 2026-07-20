@@ -1,7 +1,5 @@
 package crud
 
-import "strings"
-
 // PoDefContent .
 func PoDefContent() string {
 	return `
@@ -60,8 +58,6 @@ func FunTemplatePackage() string {
 		"gorm.io/gorm/clause"
 		"time"
 		"{{.PackagePath}}"
-		"fmt"
-		"strings"
 	)
 	
 	// GORMRepository .
@@ -115,16 +111,18 @@ func FunTemplatePackage() string {
 	}
 
 	// Order .
-	func (p *Pager) Order() interface{} {
+	func (p *Pager) Order() []clause.OrderByColumn {
 		if len(p.fields) == 0 {
 			return nil
 		}
-		args := []string{}
+		columns := make([]clause.OrderByColumn, 0, len(p.fields))
 		for index := 0; index < len(p.fields); index++ {
-			args = append(args, fmt.Sprintf("$$wave%s$$wave %s", p.fields[index], p.orders[index]))
+			columns = append(columns, clause.OrderByColumn{
+				Column: clause.Column{Name: p.fields[index]},
+				Desc:   p.orders[index] == "desc",
+			})
 		}
-
-		return strings.Join(args, ",")
+		return columns
 	}
 
 	// TotalPage .
@@ -159,9 +157,9 @@ func FunTemplatePackage() string {
 			db = db.Offset((p.page - 1) * p.pageSize).Limit(p.pageSize)
 		}
 		
-		orderValue := p.Order()
-		if orderValue != nil {
-			db = db.Order(orderValue)
+		orderColumns := p.Order()
+		if len(orderColumns) > 0 {
+			db = db.Order(orderColumns)
 		}
 		
 		resultDB := db.Find(object)
@@ -205,7 +203,7 @@ func FunTemplatePackage() string {
 		repo.Worker().Logger().Errorf("error: %v, model: %s, method: %s", e, model, method)
 	}
 `
-	return strings.ReplaceAll(source, "$$wave", "`")
+	return source
 }
 
 // FunTemplate .

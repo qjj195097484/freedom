@@ -73,10 +73,13 @@ $ go run main.go
 ```bash
 # 生成数据库相关代码（支持两种方式）
 
-# 1. 通过数据库连接生成
+# 1. 通过数据库连接生成（MySQL）
 $ freedom new-po --dsn "root:密码@tcp(127.0.0.1:3306)/数据库名?charset=utf8"
 
-# 2. 通过 JSON Schema 生成
+# 2. 通过数据库连接生成（PostgreSQL）
+$ freedom new-po --driver "postgres" -d "host=127.0.0.1 port=5432 user=root password=123456 dbname=postgres sslmode=disable"
+
+# 3. 通过 JSON Schema 生成
 $ freedom new-po --json ./domain/po/schema.json
 
 # 查看更多生成选项
