@@ -4,8 +4,8 @@ import (
 	"bytes"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/8treenet/freedom"
@@ -35,6 +35,12 @@ func newRequestLogger(cfg *RequestLoggerConfig) context.Handler {
 	return l.ServeHTTP
 }
 
+// isMultipartFormData checks if the request is a multipart/form-data (file upload).
+func isMultipartFormData(ctx context.Context) bool {
+	contentType := ctx.Request().Header.Get("Content-Type")
+	return strings.HasPrefix(contentType, "multipart/form-data")
+}
+
 // Serve serves the middleware
 func (l *requestLoggerMiddleware) ServeHTTP(ctx context.Context) {
 	// all except latency to string
@@ -43,8 +49,8 @@ func (l *requestLoggerMiddleware) ServeHTTP(ctx context.Context) {
 	var startTime, endTime time.Time
 	startTime = time.Now()
 	var reqBodyBys []byte
-	if l.config.RequestRawBody {
-		reqBodyBys, _ = ioutil.ReadAll(ctx.Request().Body)
+	if l.config.RequestRawBody && !isMultipartFormData(ctx) {
+		reqBodyBys, _ = io.ReadAll(ctx.Request().Body)
 		ctx.Request().Body.Close() //  must close
 		ctx.Request().Body = io.NopCloser(bytes.NewBuffer(reqBodyBys))
 	}
